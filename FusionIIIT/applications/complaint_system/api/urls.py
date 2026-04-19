@@ -9,6 +9,15 @@ urlpatterns = [
     url(r'^newcomplain',views.create_complain_api,name='complain-post-api'),
     url(r'^updatecomplain/(?P<c_id>[0-9]+)',views.edit_complain_api,name='complain-put-api'),
     url(r'^removecomplain/(?P<c_id>[0-9]+)',views.edit_complain_api,name='complain-delete-api'),
+
+    url(r'^complain/(?P<c_id>[0-9]+)/progress$', views.update_progress_api, name='complain-progress-api'),
+    url(r'^complain/(?P<c_id>[0-9]+)/escalate$', views.escalate_complaint_api, name='complain-escalate-api'),
+    url(r'^complain/(?P<c_id>[0-9]+)/close$', views.close_complaint_api, name='complain-close-api'),
+    url(r'^complain/(?P<c_id>[0-9]+)/reopen$', views.reopen_complaint_api, name='complain-reopen-api'),
+    url(r'^complain/(?P<c_id>[0-9]+)/feedback$', views.feedback_api, name='complain-feedback-api'),
+
+    url(r'^complaints/report$', views.report_api, name='complaints-report-api'),
+    url(r'^complaints/admin$', views.admin_oversight_api, name='complaints-admin-api'),
     
     
     url(r'^workers',views.worker_api,name='worker-get-api'),

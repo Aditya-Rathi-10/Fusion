@@ -17,8 +17,9 @@ ENV PYTHONUNBUFFERED 1
 # copy requirements file
 COPY requirements.txt $FUSION_HOME
 
-# install dependencies  
-RUN pip install --upgrade pip && pip install -r requirements.txt
+# install dependencies
+# arabic-reshaper==2.1.1 has legacy metadata that breaks with newer pip.
+RUN pip install "pip<24.1" && pip install -r requirements.txt
 
 # copy api directory to docker's work directory. 
 COPY . $FUSION_HOME
