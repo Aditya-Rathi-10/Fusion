@@ -1,0 +1,6 @@
+COMPLAIN_NOT_FOUND = 'The Complain does not exist'
+WORKER_NOT_FOUND = 'The worker does not exist'
+CARETAKER_NOT_FOUND = 'The Caretaker does not exist'
+SUPERVISOR_NOT_FOUND = 'The Supervisor does not exist'
+PERMISSION_DENIED = 'Logged in user does not have the permissions'
+NOT_SUPERUSER = 'Logged in user does not have permission'
