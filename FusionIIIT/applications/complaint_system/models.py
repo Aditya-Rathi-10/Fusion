@@ -12,13 +12,11 @@ class Constants:
         ('hall-1', 'hall-1'),
         ('hall-3', 'hall-3'),
         ('hall-4', 'hall-4'),
-        ('library', 'CC1'),
-        ('computer center', 'CC2'),
+        ('CC1', 'CC1'),
+        ('CC2', 'CC2'),
         ('core_lab', 'core_lab'),
         ('LHTC', 'LHTC'),
         ('NR2', 'NR2'),
-        ('NR3', 'NR3'),
-        ('Admin building', 'Admin building'),
         ('Rewa_Residency', 'Rewa_Residency'),
         ('Maa Saraswati Hostel', 'Maa Saraswati Hostel'),
         ('Nagarjun Hostel', 'Nagarjun Hostel'),
@@ -36,6 +34,23 @@ class Constants:
     )
 
 
+class ComplaintPriority(models.TextChoices):
+    URGENT = 'URGENT', 'Urgent (24h SLA)'
+    STANDARD = 'STANDARD', 'Standard (3d SLA)'
+    LOW = 'LOW', 'Low (7d SLA)'
+    EMERGENCY = 'EMERGENCY', 'Emergency (2h SLA)'
+
+
+class ComplaintStatus(models.IntegerChoices):
+    PENDING = 0, 'Pending'
+    IN_PROGRESS = 1, 'In Progress'
+    RESOLVED = 2, 'Resolved'
+    DECLINED = 3, 'Declined'
+    ESCALATED = 4, 'Escalated'
+    CLOSED = 5, 'Closed'
+    REOPENED = 6, 'Reopened'
+
+
 class Caretaker(models.Model):
     staff_id = models.ForeignKey(ExtraInfo, on_delete=models.CASCADE)
     area = models.CharField(choices=Constants.AREA, max_length=20, default='hall-3')
@@ -44,27 +59,11 @@ class Caretaker(models.Model):
     # no_of_comps = models.CharField(max_length=1000)
 
     def __str__(self):
-        return str(self.id) + '-' + str(self.area)
-    
-class Warden(models.Model):
-    staff_id = models.ForeignKey(ExtraInfo, on_delete=models.CASCADE)
-    area = models.CharField(choices=Constants.AREA, max_length=20, default='hall-1')
-    rating = models.IntegerField(default=0)
-    myfeedback = models.CharField(max_length=400, default="No feedback yet")
+        return str(self.id) + '-' + self.area
 
-    def __str__(self):
-        return str(self.staff_id) + '-' + str(self.area)
-
-class SectionIncharge(models.Model):
-    staff_id = models.ForeignKey(ExtraInfo, on_delete=models.CASCADE)
-    work_type = models.CharField(choices=Constants.COMPLAINT_TYPE,
-                                   max_length=20, default='Electricity')
-
-    def __str__(self):
-        return str(self.id) + '-' + self.work_type
 
 class Workers(models.Model):
-    secincharge_id = models.ForeignKey(SectionIncharge, on_delete=models.CASCADE, null=True)
+    caretaker_id = models.ForeignKey(Caretaker, on_delete=models.CASCADE, null=True, blank=True)
     name = models.CharField(max_length=50)
     age = models.CharField(max_length=10)
     phone = models.BigIntegerField(blank=True)
@@ -76,7 +75,7 @@ class Workers(models.Model):
 
 
 class StudentComplain(models.Model):
-    complainer = models.ForeignKey(ExtraInfo, on_delete=models.CASCADE)
+    complainer = models.ForeignKey(ExtraInfo, on_delete=models.SET_NULL, null=True, blank=True)
     complaint_date = models.DateTimeField(default=timezone.now)
     complaint_finish = models.DateField(blank=True, null=True)
     complaint_type = models.CharField(choices=Constants.COMPLAINT_TYPE,
@@ -84,55 +83,131 @@ class StudentComplain(models.Model):
     location = models.CharField(max_length=20, choices=Constants.AREA)
     specific_location = models.CharField(max_length=50, blank=True)
     details = models.CharField(max_length=100)
-    status = models.IntegerField(default='0')
+    status = models.IntegerField(choices=ComplaintStatus.choices, default=ComplaintStatus.PENDING)
+    priority = models.CharField(max_length=20, choices=ComplaintPriority.choices, default=ComplaintPriority.STANDARD)
+    sla_deadline = models.DateTimeField(blank=True, null=True)
     remarks = models.CharField(max_length=300, default="Pending")
     flag = models.IntegerField(default='0')
     reason = models.CharField(max_length=100, blank=True, default="None")
     feedback = models.CharField(max_length=500, blank=True)
     worker_id = models.ForeignKey(Workers, blank=True, null=True,on_delete=models.CASCADE)
+    assigned_caretaker = models.ForeignKey(Caretaker, blank=True, null=True, on_delete=models.SET_NULL, related_name='assigned_complaints')
+    assigned_supervisor = models.ForeignKey('Supervisor', blank=True, null=True, on_delete=models.SET_NULL, related_name='escalated_complaints')
+    resolved_at = models.DateTimeField(blank=True, null=True)
+    closed_at = models.DateTimeField(blank=True, null=True)
     upload_complaint = models.FileField(blank=True)
+    upload_resolved = models.FileField(blank=True, null=True)
     comment = models.CharField(max_length=100,  default="None")
+    idempotency_key = models.CharField(max_length=64, null=True, blank=True, unique=True, db_index=True)
+    escalation_level = models.IntegerField(default=0)  # 0=Caretaker, 1=Supervisor, 2=ServiceAuthority, 3=Admin
     #upload_resolved = models.FileField(blank=True,null=True)
-    upload_resolved = models.FileField(upload_to='resolved_complaints/', blank=True, null=True)
-    
-    class meta:
-        db_table = "complaint_system_student_complain"
 
     def __str__(self):
         return str(self.complainer.user.username)
 
 
-class ServiceProvider(models.Model):
-    ser_pro_id = models.ForeignKey(
-        ExtraInfo,
-        on_delete=models.CASCADE,
-        db_column="ser_pro_id_id"  # Map to the existing column
-    )
-    type = models.CharField(choices=Constants.COMPLAINT_TYPE, max_length=30,default='Electricity')
-
-    class Meta:
-        db_table = "complaint_system_service_provider"
+class Supervisor(models.Model):
+    sup_id = models.ForeignKey(ExtraInfo, on_delete=models.CASCADE, null=True, blank=True)
+    area = models.CharField(choices=Constants.AREA, max_length=20, null=True, blank=True)
 
     def __str__(self):
-        return str(self.ser_pro_id) + '-' + str(self.type)
-    
+        if self.sup_id_id:
+            return str(self.sup_id.user.username)
+        return f"Supervisor {self.id}"
+
+
+class Warden(models.Model):
+    staff_id = models.ForeignKey(ExtraInfo, on_delete=models.CASCADE)
+    area = models.CharField(choices=Constants.AREA, max_length=20, default='hall-1')
+    rating = models.IntegerField(default=0)
+    myfeedback = models.CharField(max_length=400, default='No feedback yet')
+
+    def __str__(self):
+        return str(self.staff_id.user.username)
+
+
+class ServiceProvider(models.Model):
+    ser_pro_id = models.ForeignKey(ExtraInfo, on_delete=models.CASCADE, db_column='ser_pro_id_id')
+    type = models.CharField(choices=Constants.COMPLAINT_TYPE, max_length=30, default='Electricity')
+
+    class Meta:
+        db_table = 'complaint_system_service_provider'
+
+    def __str__(self):
+        return str(self.ser_pro_id.user.username)
+
+
+class ServiceAuthority(models.Model):
+    ser_pro_id = models.ForeignKey(ExtraInfo, on_delete=models.CASCADE, db_column='ser_auth_id_id')
+    type = models.CharField(choices=Constants.COMPLAINT_TYPE, max_length=30, default='Electricity')
+
+    class Meta:
+        db_table = 'complaint_system_service_authority'
+
+    def __str__(self):
+        return str(self.ser_pro_id.user.username)
+
+
 class Complaint_Admin(models.Model):
     sup_id = models.ForeignKey(ExtraInfo, on_delete=models.CASCADE)
 
     def __str__(self):
-        return str(self.sup_id)
+        return str(self.sup_id.user.username)
 
 
-class ServiceAuthority(models.Model):
-    ser_pro_id = models.ForeignKey(
-        ExtraInfo,
-        on_delete=models.CASCADE,
-        db_column="ser_auth_id_id"  # Map to the existing column
-    )
-    type = models.CharField(choices=Constants.COMPLAINT_TYPE, max_length=30,default='Electricity')
-
-    class Meta:
-        db_table = "complaint_system_service_authority"
+class SectionIncharge(models.Model):
+    staff_id = models.ForeignKey(ExtraInfo, on_delete=models.CASCADE)
+    work_type = models.CharField(choices=Constants.COMPLAINT_TYPE, max_length=20, default='Electricity')
 
     def __str__(self):
-        return str(self.ser_pro_id) + '-' + str(self.type)
+        return str(self.staff_id.user.username)
+
+
+class ReopenRequest(models.Model):
+    class RequestStatus(models.TextChoices):
+        PENDING = 'PENDING', 'Pending'
+        APPROVED = 'APPROVED', 'Approved'
+        DENIED = 'DENIED', 'Denied'
+
+    complaint = models.ForeignKey(StudentComplain, on_delete=models.CASCADE, related_name='reopen_requests')
+    requester = models.ForeignKey(ExtraInfo, on_delete=models.CASCADE, related_name='reopen_requests_made')
+    justification = models.TextField()
+    status = models.CharField(max_length=10, choices=RequestStatus.choices, default=RequestStatus.PENDING)
+    reviewed_by = models.ForeignKey(ExtraInfo, on_delete=models.SET_NULL, null=True, blank=True, related_name='reopen_reviews')
+    review_note = models.TextField(blank=True)
+    created_at = models.DateTimeField(auto_now_add=True)
+    reviewed_at = models.DateTimeField(blank=True, null=True)
+
+    def __str__(self):
+        return f'ReopenRequest #{self.id} for Complaint #{self.complaint_id}'
+
+
+class ComplaintActivityLog(models.Model):
+    complaint = models.ForeignKey(StudentComplain, on_delete=models.CASCADE, related_name='activity_logs')
+    actor = models.ForeignKey(ExtraInfo, on_delete=models.SET_NULL, null=True, blank=True)
+    action = models.CharField(max_length=100)
+    previous_status = models.IntegerField(blank=True, null=True)
+    new_status = models.IntegerField(blank=True, null=True)
+    details = models.TextField(blank=True)
+    timestamp = models.DateTimeField(auto_now_add=True)
+
+
+class ComplaintFeedback(models.Model):
+    complaint = models.OneToOneField(StudentComplain, on_delete=models.CASCADE, related_name='feedback_entry')
+    rating = models.PositiveSmallIntegerField()
+    comments = models.TextField(blank=True)
+    submitted_at = models.DateTimeField(auto_now_add=True)
+
+
+class ComplaintAssigneeConfig(models.Model):
+    """Configuration model for dynamic auto-assignment, fixing hardcoded area mappings."""
+    location = models.CharField(choices=Constants.AREA, max_length=20)
+    complaint_type = models.CharField(choices=Constants.COMPLAINT_TYPE, max_length=20)
+    caretaker = models.ForeignKey(Caretaker, on_delete=models.SET_NULL, null=True, blank=True)
+    supervisor = models.ForeignKey('Supervisor', on_delete=models.SET_NULL, null=True, blank=True)
+
+    class Meta:
+        unique_together = ('location', 'complaint_type')
+
+    def __str__(self):
+        return f'{self.location} - {self.complaint_type}'

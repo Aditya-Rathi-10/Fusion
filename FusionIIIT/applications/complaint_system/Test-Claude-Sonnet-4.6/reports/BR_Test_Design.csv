@@ -1,0 +1,38 @@
+BR_ID,Title,Category,Input/Action,Expected Result
+BR-CM-001,Validate Mandatory Fields,Valid,"POST /complaints with category=Maintenance, location=Block-A, description=non-empty",Complaint submission accepted and processed.
+BR-CM-001,Validate Mandatory Fields,Invalid,"POST /complaints with category=null, location=Block-A, description=non-empty",Submission rejected with error: category is required.
+BR-CM-001,Validate Mandatory Fields,Invalid,"POST /complaints with category=Maintenance, location=Block-A, description=''",Submission rejected with error: description cannot be empty.
+BR-CM-002,Validate Attachment Specifications,Valid,Upload attachment with fileType=pdf and fileSize within limit,Attachment accepted and linked to complaint.
+BR-CM-002,Validate Attachment Specifications,Invalid,Upload attachment with fileType=exe,Upload rejected with error: file type not allowed.
+BR-CM-002,Validate Attachment Specifications,Invalid,Upload attachment with fileType=jpg and fileSize exceeding max_size,Upload rejected with error: file size exceeds the allowed limit.
+BR-CM-003,Auto-Assign to Caretaker,Valid,"Complaint created with category=Electrical, location=Block-B (covered by assignment policy)",Complaint assigned to the caretaker mapped for Electrical/Block-B.
+BR-CM-003,Auto-Assign to Caretaker,Invalid,Complaint created with category and location not in assignment policy,Complaint flagged as Pending-Assignment and escalated for manual assignment.
+BR-CM-004,SLA Priority Enforcement,Valid,Submit complaint with priority=Urgent,SLA deadline set to 24 hours from submission time.
+BR-CM-004,SLA Priority Enforcement,Valid,Submit complaint with priority=Standard,SLA deadline set to 3 days from submission time.
+BR-CM-004,SLA Priority Enforcement,Valid,Submit complaint with priority=Low,SLA deadline set to 7 days from submission time.
+BR-CM-004,SLA Priority Enforcement,Invalid,Submit complaint with priority=null or unrecognized value,Submission rejected with error: invalid or missing priority level.
+BR-CM-005,Manual Escalation Justification,Valid,POST /complaints/{id}/escalate with justification='Issue requires supervisor intervention',Escalation accepted. Complaint reassigned to Supervisor.
+BR-CM-005,Manual Escalation Justification,Invalid,POST /complaints/{id}/escalate with justification='',Escalation rejected with error: justification is required.
+BR-CM-006,SLA Breach Escalation,Valid,System scheduler detects complaint with status=In Progress and time_since_creation > SLA_timeframe,Complaint status updated to Escalated. Supervisor notified automatically.
+BR-CM-006,SLA Breach Escalation,Invalid,System scheduler checks complaint already in Resolved status with time_since_creation > SLA_timeframe,No escalation triggered. Complaint remains Resolved.
+BR-CM-007,Mandatory Resolution Verification,Valid,"POST /complaints/{id}/verify with action=accept, verifier=Complainant",Complaint status updated to Closed.
+BR-CM-007,Mandatory Resolution Verification,Valid,"POST /complaints/{id}/verify with action=accept, verifier=Supervisor",Complaint status updated to Closed.
+BR-CM-007,Mandatory Resolution Verification,Invalid,System attempts to set status=Closed without a verification event,Status change rejected. Complaint remains Resolved pending verification.
+BR-CM-008,Reopening with Justification,Valid,POST /complaints/{id}/reopen with status=Closed and justification=non-empty,Complaint status updated to Reopened. Supervisor notified and complaint reassigned.
+BR-CM-008,Reopening with Justification,Invalid,POST /complaints/{id}/reopen with justification='',Reopen request rejected with error: justification is required.
+BR-CM-009,Feedback Prompt on Closure,Valid,Complaint status transitions to Closed,System triggers feedback notification to complainant.
+BR-CM-009,Feedback Prompt on Closure,Invalid,Complaint status transitions to Resolved (not Closed),No feedback prompt triggered.
+BR-CM-010,Report Generation & Analytics,Valid,"GET /reports with filters: date_range=last_month, category=Electrical, location=Block-A",Report generated with aggregated complaint data matching the applied filters.
+BR-CM-010,Report Generation & Analytics,Invalid,GET /reports with no data matching the applied filters,Empty report returned with message: no data available for selected filters.
+BR-CM-011,SLA Reminder Notification,Valid,System evaluates complaint where now() + notification_threshold > SLA_deadline,Reminder notification sent to assigned caretaker and supervisor. Event logged.
+BR-CM-011,SLA Reminder Notification,Invalid,System evaluates complaint where now() + notification_threshold <= SLA_deadline,No reminder sent. Complaint monitored in next scheduled check.
+BR-CM-012,Admin Intervention,Valid,Admin with role=Admin accesses complaint with status=Escalated and reassigns it,Complaint reassigned. Intervention logged.
+BR-CM-012,Admin Intervention,Invalid,Caretaker attempts to access and override an escalated complaint not assigned to them,Action rejected with error: insufficient permissions.
+BR-CM-013,Status Transition Logic,Valid,Caretaker updates complaint status from Pending to In Progress,Status transition accepted and logged.
+BR-CM-013,Status Transition Logic,Valid,Supervisor updates complaint status from Resolved to Closed after verification,Status transition accepted and logged.
+BR-CM-013,Status Transition Logic,Invalid,Caretaker attempts to update complaint status from Pending directly to Closed,Transition rejected with error: invalid status transition.
+BR-CM-014,Automated Escalation Routing,Valid,Complaint with location=Block-B escalated; escalation_hierarchy maps Block-B to Supervisor-X,Complaint routed to Supervisor-X. Notification sent.
+BR-CM-014,Automated Escalation Routing,Invalid,Complaint escalated but complaint.location not found in escalation_hierarchy,Escalation routing fails with error. Complaint flagged for manual admin review.
+BR-CM-015,Historical Logging,Valid,Complaint status updated from Pending to In Progress by caretaker,"Audit log entry created with timestamp, user_id, and action details."
+BR-CM-015,Historical Logging,Valid,New complaint submitted by user,Complaint creation event logged with timestamp and user_id.
+BR-CM-015,Historical Logging,Invalid,Status updated but logging service is unavailable,Update rejected or queued until logging service is restored to ensure audit integrity.

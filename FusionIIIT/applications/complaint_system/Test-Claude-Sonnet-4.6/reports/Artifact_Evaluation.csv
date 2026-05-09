@@ -1,0 +1,34 @@
+Artifact_ID,Type,Status,Details
+UC-CM-001,Use Case,Implemented Correctly,6/6 passed
+UC-CM-002,Use Case,Implemented Correctly,3/3 passed
+UC-CM-003,Use Case,Implemented Correctly,4/4 passed
+UC-CM-004,Use Case,Implemented Correctly,4/4 passed
+UC-CM-005,Use Case,Implemented Correctly,4/4 passed
+UC-CM-006,Use Case,Implemented Correctly,3/3 passed
+UC-CM-007,Use Case,Implemented Correctly,2/2 passed
+UC-CM-008,Use Case,Implemented Correctly,2/2 passed
+UC-CM-009,Use Case,Implemented Correctly,2/2 passed
+UC-CM-010,Use Case,Implemented Correctly,3/3 passed
+UC-CM-011,Use Case,Implemented Correctly,3/3 passed
+UC-CM-012,Use Case,Implemented Correctly,2/2 passed
+BR-CM-001,Business Rule,Enforced Correctly,3/3 passed
+BR-CM-002,Business Rule,Enforced Correctly,3/3 passed
+BR-CM-003,Business Rule,Enforced Correctly,2/2 passed
+BR-CM-004,Business Rule,Enforced Correctly,4/4 passed
+BR-CM-005,Business Rule,Enforced Correctly,2/2 passed
+BR-CM-006,Business Rule,Enforced Correctly,2/2 passed
+BR-CM-007,Business Rule,Enforced Correctly,3/3 passed
+BR-CM-008,Business Rule,Enforced Correctly,2/2 passed
+BR-CM-009,Business Rule,Enforced Correctly,2/2 passed
+BR-CM-010,Business Rule,Enforced Correctly,2/2 passed
+BR-CM-011,Business Rule,Enforced Correctly,2/2 passed
+BR-CM-012,Business Rule,Enforced Correctly,2/2 passed
+BR-CM-013,Business Rule,Enforced Correctly,3/3 passed
+BR-CM-014,Business Rule,Enforced Correctly,2/2 passed
+BR-CM-015,Business Rule,Enforced Correctly,3/3 passed
+CM-WF-101,Workflow,Complete,4/4 passed
+CM-WF-201,Workflow,Complete,4/4 passed
+CM-WF-301,Workflow,Complete,4/4 passed
+CM-WF-401,Workflow,Complete,3/3 passed
+CM-WF-501,Workflow,Complete,3/3 passed
+CM-WF-601,Workflow,Complete,3/3 passed

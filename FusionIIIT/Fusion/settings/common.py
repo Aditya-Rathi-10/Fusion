@@ -89,6 +89,10 @@ CELERY_BEAT_SCHEDULE = {
     'leave-migration-task': {
         'task': 'applications.leave.tasks.execute_leave_migrations',
         'schedule': crontab(minute='1', hour='0')
+    },
+    'complaint-sla-check-task': {
+        'task': 'applications.complaint_system.tasks.run_complaint_sla_checks',
+        'schedule': crontab(minute='*/30')
     }
 }
 
@@ -109,7 +113,7 @@ INSTALLED_APPS = [
 
     'applications.eis',
     'notification',
-    'notifications',
+    # 'notifications',  # Removed: django-notifications-hq not compatible with Python 3.14
     'applications.academic_procedures',
     'applications.examination',
     'applications.academic_information',

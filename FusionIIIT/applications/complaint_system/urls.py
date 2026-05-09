@@ -1,7 +1,7 @@
 #urls.py
 
 # complaint/urls.py
-from django.urls import path
+from django.urls import path, include
 from .views import (
     CheckUser,
     UserComplaintView,
@@ -75,4 +75,7 @@ urlpatterns = [
     path('service_provider/<int:complaint_id>/<str:status>/', ChangeStatusSuperView.as_view()),
 
     path('generate-report/', GenerateReportView.as_view(), name='generate-report-api'),
+
+    # New API module with full UC/BR support
+    path('api/', include('applications.complaint_system.api.urls')),
 ]

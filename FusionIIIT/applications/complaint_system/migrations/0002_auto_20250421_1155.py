@@ -7,7 +7,7 @@ import django.db.models.deletion
 class Migration(migrations.Migration):
 
     dependencies = [
-        ('globals', '0003_auto_20250402_1850'),
+        ('globals', '0005_moduleaccess_database'),
         ('complaint_system', '0001_initial'),
     ]
 
@@ -50,9 +50,6 @@ class Migration(migrations.Migration):
                 ('myfeedback', models.CharField(default='No feedback yet', max_length=400)),
                 ('staff_id', models.ForeignKey(on_delete=django.db.models.deletion.CASCADE, to='globals.extrainfo')),
             ],
-        ),
-        migrations.DeleteModel(
-            name='Supervisor',
         ),
         migrations.AddField(
             model_name='studentcomplain',

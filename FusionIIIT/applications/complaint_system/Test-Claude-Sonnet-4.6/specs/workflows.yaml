@@ -1,0 +1,96 @@
+workflows:
+  - id: "CM-WF-101"
+    title: "Complaint Lifecycle"
+    description: "Manages the complete complaint lifecycle from submission to closure, including verification and feedback."
+    trigger: "User submits a complaint"
+    actors: "Complainant, System, Caretaker, Supervisor, Admin"
+    preconditions: "Authenticated user. Complaint categories and locations are configured."
+    e2e_tests:
+      - scenario: "User submits complaint → auto-assigned → caretaker resolves → complainant verifies → complaint closed → feedback collected → analytics updated"
+        expected_final_state: "Complaint status=Closed. Feedback stored. Audit log updated. Analytics report reflects the closed complaint."
+      - scenario: "User submits complaint → auto-assigned → caretaker resolves → supervisor verifies (complainant unresponsive) → complaint closed"
+        expected_final_state: "Complaint status=Closed via supervisor verification. Feedback prompt sent. Logs updated."
+    negative_tests:
+      - scenario: "User submits complaint with missing mandatory fields"
+        expected_final_state: "Complaint not created. Validation error returned. No assignment or SLA triggered."
+      - scenario: "Complainant rejects resolution — complaint reopened and goes back to caretaker"
+        expected_final_state: "Complaint status=Reopened. Reassigned to caretaker. Closure and feedback not triggered."
+
+  - id: "CM-WF-201"
+    title: "Complaint Escalation Flow"
+    description: "Manages manual or automatic escalation of complaints to Supervisors and higher authorities."
+    trigger: "Caretaker escalates manually or system detects SLA breach."
+    actors: "Caretaker, System, Supervisor, Admin"
+    preconditions: "Complaint exists. SLA policies are defined."
+    e2e_tests:
+      - scenario: "Caretaker manually escalates with justification → Supervisor notified → Supervisor reassigns → resolution verified → complaint closed"
+        expected_final_state: "Complaint status=Closed. Escalation hierarchy applied. All transitions logged. Feedback prompt triggered."
+      - scenario: "System auto-escalates on SLA breach → Supervisor notified → Supervisor resolves → verification → complaint closed"
+        expected_final_state: "Complaint status=Closed. SLA breach recorded. Escalation and closure logged."
+    negative_tests:
+      - scenario: "Caretaker attempts manual escalation without providing justification"
+        expected_final_state: "Escalation rejected. Complaint remains in current status. Error returned to caretaker."
+      - scenario: "Escalation notification fails → system retries"
+        expected_final_state: "Supervisor not immediately notified. Error logged. Retry queued. Complaint status remains Escalated."
+
+  - id: "CM-WF-301"
+    title: "SLA Monitoring & Enforcement"
+    description: "Enforces SLA deadlines by sending reminders and automatically escalating overdue complaints."
+    trigger: "System scheduler runs periodic SLA checks."
+    actors: "System, Caretaker, Supervisor, Admin"
+    preconditions: "Active complaints with SLA deadlines defined."
+    e2e_tests:
+      - scenario: "Complaint approaches SLA threshold → reminder sent to caretaker and supervisor → caretaker resolves before breach"
+        expected_final_state: "Complaint resolved before SLA deadline. Reminder logged. No escalation triggered."
+      - scenario: "Complaint breaches SLA → auto-escalated → Supervisor handles → Admin oversight confirms closure"
+        expected_final_state: "Complaint status=Closed. SLA breach and escalation both logged. Admin intervention recorded."
+    negative_tests:
+      - scenario: "Reminder notification fails on SLA approach"
+        expected_final_state: "Reminder not delivered. Error logged. Retry queued. Complaint monitored in next scheduler cycle."
+      - scenario: "Complaint remains unresolved even after auto-escalation to Supervisor"
+        expected_final_state: "Complaint escalated further to Admin. All escalation events logged. SLA breach recorded."
+
+  - id: "CM-WF-401"
+    title: "Complaint Reopening Flow"
+    description: "Manages the process of reopening closed complaints based on complainant dissatisfaction or supervisor intervention."
+    trigger: "Complainant requests reopen or supervisor initiates reopen."
+    actors: "Complainant, Supervisor, Caretaker, System"
+    preconditions: "Complaint was previously closed."
+    e2e_tests:
+      - scenario: "Complainant submits reopen request with justification → Supervisor validates → caretaker reworks → resolution re-verified → complaint closed again"
+        expected_final_state: "Complaint status=Closed. Reopen and re-resolution events logged. Feedback prompt re-triggered."
+    negative_tests:
+      - scenario: "Complainant submits reopen request without justification"
+        expected_final_state: "Request rejected automatically. Complaint remains Closed. Error returned to complainant."
+      - scenario: "Complainant attempts to reopen outside the allowed timeframe"
+        expected_final_state: "Request denied. Complaint remains Closed. Error returned indicating window has expired."
+
+  - id: "CM-WF-501"
+    title: "Extensions & Variants"
+    description: "Covers special scenarios and optional features in complaint management including draft saves, bulk assignment, emergency SLAs, audit logging, multi-level escalation, penalty tracking, vendor coordination, and multi-language notifications."
+    trigger: "Special conditions or admin action."
+    actors: "Complainant, Caretaker, Supervisor, Admin, System, Vendor"
+    preconditions: "System supports optional features."
+    e2e_tests:
+      - scenario: "Complainant saves draft → Admin performs bulk assignment → emergency SLA applied → audit logged → multi-level escalation triggered → SLA breach penalty recorded → vendor coordinated → multi-language notification sent"
+        expected_final_state: "All optional extensions applied. Draft saved without SLA trigger. Bulk assignment, escalation, penalties, and vendor coordination logged. Multi-language notifications sent."
+    negative_tests:
+      - scenario: "Admin bulk assignment attempted but no caretakers are available in assignment pool"
+        expected_final_state: "Bulk assignment fails. Complaints remain unassigned. Admin notified with error."
+      - scenario: "Emergency SLA applied but notification service unavailable for multi-language notification"
+        expected_final_state: "SLA applied and logged. Notification delivery fails. Error logged. Retry queued."
+
+  - id: "CM-WF-601"
+    title: "Reporting & Analytics"
+    description: "Generates reports from historical complaint data for analysis and service improvement."
+    trigger: "Supervisor or Admin requests a report, or a scheduled job is triggered."
+    actors: "Supervisor, Admin, System"
+    preconditions: "Historical complaint data exists."
+    e2e_tests:
+      - scenario: "Supervisor selects filters → system aggregates historical data and validates quality → KPIs and metrics computed → report displayed and exported"
+        expected_final_state: "Report successfully generated with filtered data, resolution KPIs, and reopen rates. Available for export."
+    negative_tests:
+      - scenario: "No historical data matches the selected filters"
+        expected_final_state: "Empty report returned. Message shown: no data available for selected filters."
+      - scenario: "Data aggregation fails due to system error"
+        expected_final_state: "Report generation fails. Error logged. User notified with retry option."
