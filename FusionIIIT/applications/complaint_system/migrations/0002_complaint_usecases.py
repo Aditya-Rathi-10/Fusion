@@ -5,7 +5,8 @@ import django.db.models.deletion
 class Migration(migrations.Migration):
 
     dependencies = [
-        ('complaint_system', '0001_initial'),
+        ('globals', '0005_moduleaccess_database'),
+        ('complaint_system', '0002_auto_20250421_1155'),
     ]
 
     operations = [
@@ -38,11 +39,6 @@ class Migration(migrations.Migration):
             model_name='studentcomplain',
             name='closed_at',
             field=models.DateTimeField(blank=True, null=True),
-        ),
-        migrations.AddField(
-            model_name='studentcomplain',
-            name='upload_resolved',
-            field=models.FileField(blank=True, null=True, upload_to=''),
         ),
         migrations.AlterField(
             model_name='studentcomplain',

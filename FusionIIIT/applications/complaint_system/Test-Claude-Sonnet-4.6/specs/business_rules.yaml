@@ -1,0 +1,164 @@
+business_rules:
+  - id: "BR-CM-001"
+    title: "Validate Mandatory Fields"
+    description: "A complaint MUST include a valid category, location, and description before submission."
+    valid_tests:
+      - input_action: "POST /complaints with category=Maintenance, location=Block-A, description=non-empty"
+        expected_result: "Complaint submission accepted and processed."
+    invalid_tests:
+      - input_action: "POST /complaints with category=null, location=Block-A, description=non-empty"
+        expected_result: "Submission rejected with error: category is required."
+      - input_action: "POST /complaints with category=Maintenance, location=Block-A, description=''"
+        expected_result: "Submission rejected with error: description cannot be empty."
+
+  - id: "BR-CM-002"
+    title: "Validate Attachment Specifications"
+    description: "Attachments MUST NOT exceed the predefined size limit and MUST be in an accepted format (.jpg, .png, .pdf, .docx)."
+    valid_tests:
+      - input_action: "Upload attachment with fileType=pdf and fileSize within limit"
+        expected_result: "Attachment accepted and linked to complaint."
+    invalid_tests:
+      - input_action: "Upload attachment with fileType=exe"
+        expected_result: "Upload rejected with error: file type not allowed."
+      - input_action: "Upload attachment with fileType=jpg and fileSize exceeding max_size"
+        expected_result: "Upload rejected with error: file size exceeds the allowed limit."
+
+  - id: "BR-CM-003"
+    title: "Auto-Assign to Caretaker"
+    description: "A new complaint MUST be automatically assigned to the designated caretaker or team based on its location and category."
+    valid_tests:
+      - input_action: "Complaint created with category=Electrical, location=Block-B (covered by assignment policy)"
+        expected_result: "Complaint assigned to the caretaker mapped for Electrical/Block-B."
+    invalid_tests:
+      - input_action: "Complaint created with category and location not in assignment policy"
+        expected_result: "Complaint flagged as Pending-Assignment and escalated for manual assignment."
+
+  - id: "BR-CM-004"
+    title: "SLA Priority Enforcement"
+    description: "Each complaint MUST have a priority level with a corresponding SLA: Urgent=24h, Standard=3d, Low=7d."
+    valid_tests:
+      - input_action: "Submit complaint with priority=Urgent"
+        expected_result: "SLA deadline set to 24 hours from submission time."
+      - input_action: "Submit complaint with priority=Standard"
+        expected_result: "SLA deadline set to 3 days from submission time."
+      - input_action: "Submit complaint with priority=Low"
+        expected_result: "SLA deadline set to 7 days from submission time."
+    invalid_tests:
+      - input_action: "Submit complaint with priority=null or unrecognized value"
+        expected_result: "Submission rejected with error: invalid or missing priority level."
+
+  - id: "BR-CM-005"
+    title: "Manual Escalation Justification"
+    description: "A Caretaker MUST provide a justification when manually escalating a complaint."
+    valid_tests:
+      - input_action: "POST /complaints/{id}/escalate with justification='Issue requires supervisor intervention'"
+        expected_result: "Escalation accepted. Complaint reassigned to Supervisor."
+    invalid_tests:
+      - input_action: "POST /complaints/{id}/escalate with justification=''"
+        expected_result: "Escalation rejected with error: justification is required."
+
+  - id: "BR-CM-006"
+    title: "SLA Breach Escalation"
+    description: "If a complaint is not resolved within its SLA timeframe, the system MUST automatically escalate it to the Supervisor."
+    valid_tests:
+      - input_action: "System scheduler detects complaint with status=In Progress and time_since_creation > SLA_timeframe"
+        expected_result: "Complaint status updated to Escalated. Supervisor notified automatically."
+    invalid_tests:
+      - input_action: "System scheduler checks complaint already in Resolved status with time_since_creation > SLA_timeframe"
+        expected_result: "No escalation triggered. Complaint remains Resolved."
+
+  - id: "BR-CM-007"
+    title: "Mandatory Resolution Verification"
+    description: "A complaint's status CANNOT be changed to Closed without explicit verification from the original complainant or a Supervisor."
+    valid_tests:
+      - input_action: "POST /complaints/{id}/verify with action=accept, verifier=Complainant"
+        expected_result: "Complaint status updated to Closed."
+      - input_action: "POST /complaints/{id}/verify with action=accept, verifier=Supervisor"
+        expected_result: "Complaint status updated to Closed."
+    invalid_tests:
+      - input_action: "System attempts to set status=Closed without a verification event"
+        expected_result: "Status change rejected. Complaint remains Resolved pending verification."
+
+  - id: "BR-CM-008"
+    title: "Reopening with Justification"
+    description: "A complainant MAY request to reopen a Resolved or Closed complaint if they provide a valid justification."
+    valid_tests:
+      - input_action: "POST /complaints/{id}/reopen with status=Closed and justification=non-empty"
+        expected_result: "Complaint status updated to Reopened. Supervisor notified and complaint reassigned."
+    invalid_tests:
+      - input_action: "POST /complaints/{id}/reopen with justification=''"
+        expected_result: "Reopen request rejected with error: justification is required."
+
+  - id: "BR-CM-009"
+    title: "Feedback Prompt on Closure"
+    description: "The system MUST prompt the complainant for feedback when a complaint's status is changed to Closed."
+    valid_tests:
+      - input_action: "Complaint status transitions to Closed"
+        expected_result: "System triggers feedback notification to complainant."
+    invalid_tests:
+      - input_action: "Complaint status transitions to Resolved (not Closed)"
+        expected_result: "No feedback prompt triggered."
+
+  - id: "BR-CM-010"
+    title: "Report Generation & Analytics"
+    description: "The system MUST generate analytical reports on complaint frequency, resolution efficiency, and recurring issues with support for filtering by timeframe, category, and location."
+    valid_tests:
+      - input_action: "GET /reports with filters: date_range=last_month, category=Electrical, location=Block-A"
+        expected_result: "Report generated with aggregated complaint data matching the applied filters."
+    invalid_tests:
+      - input_action: "GET /reports with no data matching the applied filters"
+        expected_result: "Empty report returned with message: no data available for selected filters."
+
+  - id: "BR-CM-011"
+    title: "SLA Reminder Notification"
+    description: "The system MUST send periodic reminders to caretakers and supervisors when complaints approach SLA deadlines."
+    valid_tests:
+      - input_action: "System evaluates complaint where now() + notification_threshold > SLA_deadline"
+        expected_result: "Reminder notification sent to assigned caretaker and supervisor. Event logged."
+    invalid_tests:
+      - input_action: "System evaluates complaint where now() + notification_threshold <= SLA_deadline"
+        expected_result: "No reminder sent. Complaint monitored in next scheduled check."
+
+  - id: "BR-CM-012"
+    title: "Admin Intervention"
+    description: "A Service Authority or Admin MUST have the ability to monitor and intervene on any overdue or escalated complaint."
+    valid_tests:
+      - input_action: "Admin with role=Admin accesses complaint with status=Escalated and reassigns it"
+        expected_result: "Complaint reassigned. Intervention logged."
+    invalid_tests:
+      - input_action: "Caretaker attempts to access and override an escalated complaint not assigned to them"
+        expected_result: "Action rejected with error: insufficient permissions."
+
+  - id: "BR-CM-013"
+    title: "Status Transition Logic"
+    description: "Status transitions MUST follow a predefined path. Valid transitions include: Pending → In Progress or Escalated; Resolved → Closed or Reopened."
+    valid_tests:
+      - input_action: "Caretaker updates complaint status from Pending to In Progress"
+        expected_result: "Status transition accepted and logged."
+      - input_action: "Supervisor updates complaint status from Resolved to Closed after verification"
+        expected_result: "Status transition accepted and logged."
+    invalid_tests:
+      - input_action: "Caretaker attempts to update complaint status from Pending directly to Closed"
+        expected_result: "Transition rejected with error: invalid status transition."
+
+  - id: "BR-CM-014"
+    title: "Automated Escalation Routing"
+    description: "An escalated complaint MUST be routed to the Supervisor designated for the complaint's area. If unresolved, it must escalate further to the Service Authority and Admin."
+    valid_tests:
+      - input_action: "Complaint with location=Block-B escalated; escalation_hierarchy maps Block-B to Supervisor-X"
+        expected_result: "Complaint routed to Supervisor-X. Notification sent."
+    invalid_tests:
+      - input_action: "Complaint escalated but complaint.location not found in escalation_hierarchy"
+        expected_result: "Escalation routing fails with error. Complaint flagged for manual admin review."
+
+  - id: "BR-CM-015"
+    title: "Historical Logging"
+    description: "The system MUST maintain a historical log of all actions, status changes, and communications for every complaint."
+    valid_tests:
+      - input_action: "Complaint status updated from Pending to In Progress by caretaker"
+        expected_result: "Audit log entry created with timestamp, user_id, and action details."
+      - input_action: "New complaint submitted by user"
+        expected_result: "Complaint creation event logged with timestamp and user_id."
+    invalid_tests:
+      - input_action: "Status updated but logging service is unavailable"
+        expected_result: "Update rejected or queued until logging service is restored to ensure audit integrity."

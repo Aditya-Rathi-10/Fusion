@@ -3,6 +3,7 @@ import datetime
 from datetime import date, datetime, timedelta
 
 from django.contrib import messages
+from django.db import transaction
 from django.contrib.auth import authenticate, login
 from django.shortcuts import get_object_or_404, render
 from applications.globals.models import User, ExtraInfo, HoldsDesignation
@@ -94,6 +95,7 @@ class UserComplaintView(APIView):
         serializer = StudentComplainSerializer(complaints, many=True)
         return Response(serializer.data)
 
+    @transaction.atomic
     def post(self, request):
         """
         Allows the user to register a new complaint.
@@ -158,7 +160,14 @@ class UserComplaintView(APIView):
             student = 1
             message = "A New Complaint has been lodged"
             for caretaker in caretakers:
-                complaint_system_notif(request.user, caretaker.user, 'lodge_comp_alert', complaint.id, student, message)
+                transaction.on_commit(lambda caretaker=caretaker: complaint_system_notif(
+                    request.user,
+                    caretaker.user,
+                    'lodge_comp_alert',
+                    complaint.id,
+                    student,
+                    message,
+                ))
             
             return Response(serializer.data, status=201)
         else:
@@ -168,6 +177,7 @@ class UserComplaintView(APIView):
 class CaretakerFeedbackView(APIView):
     permission_classes = [IsAuthenticated]
 
+    @transaction.atomic
     def post(self, request):
         """
         Allows the user to submit feedback for a particular type of caretaker.
@@ -195,6 +205,7 @@ class CaretakerFeedbackView(APIView):
 class SubmitFeedbackView(APIView):
     permission_classes = [IsAuthenticated]
 
+    @transaction.atomic
     def post(self, request, complaint_id):
         """
         Allows the user to submit feedback for a complaint.
@@ -207,20 +218,22 @@ class SubmitFeedbackView(APIView):
         except ValueError:
             return Response({"error": "Invalid rating"}, status=400)
         
-        try:
-            StudentComplain.objects.filter(id=complaint_id).update(feedback=feedback, flag=rating)
-            a = StudentComplain.objects.filter(id=complaint_id).first()
-            care = Caretaker.objects.filter(area=a.location).first()
-            rate = care.rating
-            if rate == 0:
-                newrate = rating
-            else:
-                newrate = int((rating + rate) / 2)
-            care.rating = newrate
-            care.save()
-            return Response({"success": "Feedback submitted"})
-        except:
-            return Response({"error": "Internal server errror"}, status=500)
+        complaint = StudentComplain.objects.select_for_update().filter(id=complaint_id).first()
+        if complaint is None:
+            return Response({"error": "Complaint not found"}, status=404)
+        care = Caretaker.objects.select_for_update().filter(area=complaint.location).first()
+        if care is None:
+            return Response({"error": "Caretaker not found"}, status=404)
+
+        complaint.feedback = feedback
+        complaint.flag = rating
+        complaint.save()
+
+        rate = care.rating
+        newrate = rating if rate == 0 else int((rating + rate) / 2)
+        care.rating = newrate
+        care.save()
+        return Response({"success": "Feedback submitted"})
 
 # Converted to DRF APIView
 class ComplaintDetailView(APIView):
@@ -269,6 +282,7 @@ from operator import attrgetter
 class CaretakerLodgeView(APIView):
     permission_classes = [IsAuthenticated]
 
+    @transaction.atomic
     def post(self, request):
         """
         Allows the caretaker to lodge a new complaint.
@@ -334,7 +348,14 @@ class CaretakerLodgeView(APIView):
             # Send notification
             student = 1
             message = "A New Complaint has been lodged"
-            complaint_system_notif(request.user, caretaker_name.user, 'lodge_comp_alert', complaint.id, student, message)
+            transaction.on_commit(lambda: complaint_system_notif(
+                request.user,
+                caretaker_name.user,
+                'lodge_comp_alert',
+                complaint.id,
+                student,
+                message,
+            ))
 
             return Response(serializer.data, status=status.HTTP_201_CREATED)
         else:
@@ -362,8 +383,7 @@ class CaretakerView(APIView):
         y = ExtraInfo.objects.select_related('user', 'department').filter(user=current_user).first()
         try:
             a = Caretaker.objects.select_related('staff_id').get(staff_id=y.id)
-            b = a.area
-            complaints = StudentComplain.objects.filter(location=b).order_by('-id')
+            complaints = StudentComplain.objects.filter(assigned_caretaker=a).order_by('-id')
             serializer = StudentComplainSerializer(complaints, many=True)
             return Response(serializer.data)
         except Caretaker.DoesNotExist:
@@ -417,6 +437,7 @@ class ResolvePendingView(APIView):
     #             return Response({'error': 'Complaint not found'}, status=status.HTTP_404_NOT_FOUND)
     #     else:
     #         return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
+    @transaction.atomic
     def post(self, request, cid):
         """
         Allows the caretaker to resolve a pending complaint.
@@ -425,44 +446,41 @@ class ResolvePendingView(APIView):
         print("Incoming data:", request.data)
         print("Incoming files:", request.FILES)  # ✅ Debugging log
 
-        if serializer.is_valid():
-            newstatus = serializer.validated_data['yesorno']
-            comment = serializer.validated_data.get('comment', '')
-            intstatus = 2 if newstatus == 'Yes' else 3
-            StudentComplain.objects.filter(id=cid).update(status=intstatus, comment=comment)
-
-            # Send notification to the complainer
-            # ✅ Get the complaint record
-            try:
-                complaint = StudentComplain.objects.get(id=cid)
-                complaint.status = intstatus
-                complaint.comment = comment
-
-                # ✅ Save the uploaded image if it exists
-                if 'upload_resolved' in request.FILES:
-                    complaint.upload_resolved = request.FILES['upload_resolved']
-                    print("✅ Image Saved:", complaint.upload_resolved)
-
-                complaint.save()
-
-                # ✅ Send notification
-                complainer_details = StudentComplain.objects.select_related('complainer').get(id=cid)
-                student = 0
-                if newstatus == 'Yes':
-                    message = "Congrats! Your complaint has been resolved"
-                    notification_type = 'comp_resolved_alert'
-                else:
-                    message = "Your complaint has been declined"
-                    notification_type = 'comp_declined_alert'
-
-                complaint_system_notif(request.user, complainer_details.complainer.user, notification_type,
-                                       complainer_details.id, student, message)
-
-                return Response({'success': 'Complaint status updated'})
-            except StudentComplain.DoesNotExist:
-                return Response({'error': 'Complaint not found'}, status=status.HTTP_404_NOT_FOUND)
-        else:
+        if not serializer.is_valid():
             return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
+
+        complaint = StudentComplain.objects.select_for_update().filter(id=cid).first()
+        if complaint is None:
+            return Response({'error': 'Complaint not found'}, status=status.HTTP_404_NOT_FOUND)
+
+        newstatus = serializer.validated_data['yesorno']
+        comment = serializer.validated_data.get('comment', '')
+        intstatus = 2 if newstatus == 'Yes' else 3
+
+        complaint.status = intstatus
+        complaint.comment = comment
+        if 'upload_resolved' in request.FILES:
+            complaint.upload_resolved = request.FILES['upload_resolved']
+            print("✅ Image Saved:", complaint.upload_resolved)
+        complaint.save()
+
+        student = 0
+        if newstatus == 'Yes':
+            message = "Congrats! Your complaint has been resolved"
+            notification_type = 'comp_resolved_alert'
+        else:
+            message = "Your complaint has been declined"
+            notification_type = 'comp_declined_alert'
+
+        transaction.on_commit(lambda: complaint_system_notif(
+            request.user,
+            complaint.complainer.user,
+            notification_type,
+            complaint.id,
+            student,
+            message,
+        ))
+        return Response({'success': 'Complaint status updated'})
 
     def get(self, request, cid):
         """
@@ -511,29 +529,38 @@ class SearchComplaintView(APIView):
 class SubmitFeedbackCaretakerView(APIView):
     permission_classes = [IsAuthenticated]
 
+    @transaction.atomic
     def post(self, request, complaint_id):
         """
         Allows the caretaker to submit feedback for a complaint.
         """
         serializer = FeedbackSerializer(data=request.data)
-        if serializer.is_valid():
-            feedback = serializer.validated_data['feedback']
-            rating = serializer.validated_data['rating']
-            try:
-                rating = int(rating)
-            except ValueError:
-                return Response({'error': 'Invalid rating'}, status=status.HTTP_400_BAD_REQUEST)
-            StudentComplain.objects.filter(id=complaint_id).update(feedback=feedback, flag=rating)
-
-            a = StudentComplain.objects.select_related('complainer', 'complainer_user', 'complainer_department').filter(id=complaint_id).first()
-            care = Caretaker.objects.filter(area=a.location).first()
-            rate = care.rating
-            newrate = int((rating + rate) / 2) if rate != 0 else rating
-            care.rating = newrate
-            care.save()
-            return Response({'success': 'Feedback submitted'})
-        else:
+        if not serializer.is_valid():
             return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
+
+        feedback = serializer.validated_data['feedback']
+        rating = serializer.validated_data['rating']
+        try:
+            rating = int(rating)
+        except ValueError:
+            return Response({'error': 'Invalid rating'}, status=status.HTTP_400_BAD_REQUEST)
+
+        complaint = StudentComplain.objects.select_for_update().filter(id=complaint_id).first()
+        if complaint is None:
+            return Response({'error': 'Complaint not found'}, status=status.HTTP_404_NOT_FOUND)
+        care = Caretaker.objects.select_for_update().filter(area=complaint.location).first()
+        if care is None:
+            return Response({'error': 'Caretaker not found'}, status=status.HTTP_404_NOT_FOUND)
+
+        complaint.feedback = feedback
+        complaint.flag = rating
+        complaint.save()
+
+        rate = care.rating
+        newrate = int((rating + rate) / 2) if rate != 0 else rating
+        care.rating = newrate
+        care.save()
+        return Response({'success': 'Feedback submitted'})
 
     def get(self, request, complaint_id):
         """
@@ -578,6 +605,7 @@ from operator import attrgetter
 class ServiceProviderLodgeView(APIView):
     permission_classes = [IsAuthenticated]
 
+    @transaction.atomic
     def post(self, request):
         """
         Allows the service_provider to lodge a new complaint.
@@ -644,7 +672,14 @@ class ServiceProviderLodgeView(APIView):
             # Send notification
             student = 1
             message = "A New Complaint has been lodged"
-            complaint_system_notif(request.user, caretaker_name.user, 'lodge_comp_alert', complaint.id, student, message)
+            transaction.on_commit(lambda: complaint_system_notif(
+                request.user,
+                caretaker_name.user,
+                'lodge_comp_alert',
+                complaint.id,
+                student,
+                message,
+            ))
 
             return Response(serializer.data, status=status.HTTP_201_CREATED)
         else:
@@ -735,28 +770,37 @@ class ServiceProviderComplaintDetailView(APIView):
 class ServiceProviderResolvePendingView(APIView):
     permission_classes = [IsAuthenticated]
 
+    @transaction.atomic
     def post(self, request, cid):
         """
         Allows the service_provider to resolve a pending complaint.
         """
         serializer = ResolvePendingSerializer(data=request.data)
-        if serializer.is_valid():
-            newstatus = serializer.validated_data['yesorno']
-            comment = serializer.validated_data.get('comment', '')
-            intstatus = 2 if newstatus == 'Yes' else 3
-            StudentComplain.objects.filter(id=cid).update(status=intstatus, comment=comment)
-
-            # Send notification to the complainer
-            try:
-                complainer_details = StudentComplain.objects.select_related('complainer').get(id=cid)
-                student = 0
-                message = "Congrats! Your complaint has been resolved"
-                complaint_system_notif(request.user, complainer_details.complainer.user, 'comp_resolved_alert', complainer_details.id, student, message)
-                return Response({'success': 'Complaint status updated'})
-            except StudentComplain.DoesNotExist:
-                return Response({'error': 'Complaint not found'}, status=status.HTTP_404_NOT_FOUND)
-        else:
+        if not serializer.is_valid():
             return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
+
+        complaint = StudentComplain.objects.select_for_update().filter(id=cid).first()
+        if complaint is None:
+            return Response({'error': 'Complaint not found'}, status=status.HTTP_404_NOT_FOUND)
+
+        newstatus = serializer.validated_data['yesorno']
+        comment = serializer.validated_data.get('comment', '')
+        intstatus = 2 if newstatus == 'Yes' else 3
+        complaint.status = intstatus
+        complaint.comment = comment
+        complaint.save()
+
+        student = 0
+        message = "Congrats! Your complaint has been resolved"
+        transaction.on_commit(lambda: complaint_system_notif(
+            request.user,
+            complaint.complainer.user,
+            'comp_resolved_alert',
+            complaint.id,
+            student,
+            message,
+        ))
+        return Response({'success': 'Complaint status updated'})
 
     def get(self, request, cid):
         """
@@ -773,33 +817,38 @@ class ServiceProviderResolvePendingView(APIView):
 class ServiceProviderSubmitFeedbackView(APIView):
     permission_classes = [IsAuthenticated]
 
+    @transaction.atomic
     def post(self, request, complaint_id):
         """
         Allows the service_provider to submit feedback for a complaint.
         """
         serializer = FeedbackSerializer(data=request.data)
-        if serializer.is_valid():
-            feedback = serializer.validated_data['feedback']
-            rating = serializer.validated_data['rating']
-            try:
-                rating = int(rating)
-            except ValueError:
-                return Response({'error': 'Invalid rating'}, status=status.HTTP_400_BAD_REQUEST)
-            StudentComplain.objects.filter(id=complaint_id).update(feedback=feedback, flag=rating)
-
-            # Update caretaker's rating
-            try:
-                complaint = StudentComplain.objects.select_related('complainer', 'complainer_user', 'complainer_department').get(id=complaint_id)
-                care = Caretaker.objects.filter(area=complaint.location).first()
-                rate = care.rating
-                newrate = int((rating + rate) / 2) if rate != 0 else rating
-                care.rating = newrate
-                care.save()
-                return Response({'success': 'Feedback submitted'})
-            except Caretaker.DoesNotExist:
-                return Response({'error': 'Caretaker not found'}, status=status.HTTP_404_NOT_FOUND)
-        else:
+        if not serializer.is_valid():
             return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
+
+        feedback = serializer.validated_data['feedback']
+        rating = serializer.validated_data['rating']
+        try:
+            rating = int(rating)
+        except ValueError:
+            return Response({'error': 'Invalid rating'}, status=status.HTTP_400_BAD_REQUEST)
+
+        complaint = StudentComplain.objects.select_for_update().filter(id=complaint_id).first()
+        if complaint is None:
+            return Response({'error': 'Complaint not found'}, status=status.HTTP_404_NOT_FOUND)
+        care = Caretaker.objects.select_for_update().filter(area=complaint.location).first()
+        if care is None:
+            return Response({'error': 'Caretaker not found'}, status=status.HTTP_404_NOT_FOUND)
+
+        complaint.feedback = feedback
+        complaint.flag = rating
+        complaint.save()
+
+        rate = care.rating
+        newrate = int((rating + rate) / 2) if rate != 0 else rating
+        care.rating = newrate
+        care.save()
+        return Response({'success': 'Feedback submitted'})
 
     def get(self, request, complaint_id):
         """
@@ -851,6 +900,7 @@ class RemoveWorkerView(APIView):
 class ForwardCompaintView(APIView):
     permission_classes = [IsAuthenticated]
 
+    @transaction.atomic
     def post(self, request, comp_id1):
         """
         Assigns a complaint to a service_provider.
@@ -859,9 +909,8 @@ class ForwardCompaintView(APIView):
         y = ExtraInfo.objects.filter(user=current_user).first()
         complaint_id = comp_id1
 
-        try:
-            complaint = StudentComplain.objects.get(id=complaint_id)
-        except StudentComplain.DoesNotExist:
+        complaint = StudentComplain.objects.select_for_update().filter(id=complaint_id).first()
+        if complaint is None:
             return Response({'error': 'Complaint not found'}, status=status.HTTP_404_NOT_FOUND)
 
         complaint_type = complaint.complaint_type
@@ -873,34 +922,46 @@ class ForwardCompaintView(APIView):
         service_provider = service_providers.first()
         service_provider_details = ExtraInfo.objects.get(id=service_provider.ser_pro_id.id)
 
-        # Update complaint status
-        complaint.status = 1
-        complaint.save()
-
         # Forward file to service_provider
         sup_designations = HoldsDesignation.objects.filter(user=service_provider_details.user_id).distinct('user_id')
         
         #send notification to all the service providers
         for sup in sup_designations:
             print(sup.user_id)
-            complaint_system_notif(request.user, User.objects.get(id=sup.user_id), 'comp_assigned_alert', complaint_id, 0, "A new complaint has been assigned to you")
+            transaction.on_commit(lambda sup=sup: complaint_system_notif(
+                request.user,
+                User.objects.get(id=sup.user_id),
+                'comp_assigned_alert',
+                complaint_id,
+                0,
+                "A new complaint has been assigned to you",
+            ))
         
 
         files = File.objects.filter(src_object_id=complaint_id)
-
         if not files.exists():
             return Response({'error': 'No files associated with this complaint'}, status=status.HTTP_206_PARTIAL_CONTENT)
 
         service_provider_username = User.objects.get(id=service_provider_details.user_id).username
 
-        file = forward_file(
-            file_id=files.first().id,
-            receiver=service_provider_username,
-            receiver_designation=sup_designations.first().designation,
-            file_extra_JSON={},
-            remarks="",
-            file_attachment=None
-        )
+        # Update complaint status after validations
+        complaint.status = 1
+        complaint.save()
+
+        def _forward_file():
+            try:
+                forward_file(
+                    file_id=files.first().id,
+                    receiver=service_provider_username,
+                    receiver_designation=sup_designations.first().designation,
+                    file_extra_JSON={},
+                    remarks="",
+                    file_attachment=None
+                )
+            except Exception:
+                StudentComplain.objects.filter(id=complaint.id).update(flag=1, remarks='Forward failed')
+
+        transaction.on_commit(_forward_file)
 
         return Response({'success': 'Complaint assigned to service_provider'}, status=status.HTTP_200_OK)
 

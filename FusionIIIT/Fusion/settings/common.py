@@ -113,7 +113,7 @@ INSTALLED_APPS = [
 
     'applications.eis',
     'notification',
-    'notifications',
+    # 'notifications',  # Removed: django-notifications-hq not compatible with Python 3.14
     'applications.academic_procedures',
     'applications.examination',
     'applications.academic_information',

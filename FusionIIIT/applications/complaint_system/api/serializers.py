@@ -6,6 +6,7 @@ from applications.complaint_system.models import (
     ComplaintFeedback,
     ComplaintPriority,
     ComplaintStatus,
+    ReopenRequest,
     StudentComplain,
     Supervisor,
     Workers,
@@ -14,6 +15,32 @@ from applications.globals.models import ExtraInfo
 
 
 class StudentComplainSerializer(serializers.ModelSerializer):
+    has_pending_reopen_request = serializers.SerializerMethodField()
+    latest_reopen_request_status = serializers.SerializerMethodField()
+    has_feedback = serializers.SerializerMethodField()
+    feedback_rating = serializers.SerializerMethodField()
+    feedback_comments = serializers.SerializerMethodField()
+
+    def get_has_pending_reopen_request(self, obj):
+        return obj.reopen_requests.filter(status=ReopenRequest.RequestStatus.PENDING).exists()
+
+    def get_latest_reopen_request_status(self, obj):
+        latest = obj.reopen_requests.order_by('-created_at').first()
+        return latest.status if latest else None
+
+    def get_has_feedback(self, obj):
+        return hasattr(obj, 'feedback_entry') and obj.feedback_entry is not None
+
+    def get_feedback_rating(self, obj):
+        if hasattr(obj, 'feedback_entry') and obj.feedback_entry is not None:
+            return obj.feedback_entry.rating
+        return None
+
+    def get_feedback_comments(self, obj):
+        if hasattr(obj, 'feedback_entry') and obj.feedback_entry is not None:
+            return obj.feedback_entry.comments
+        return ''
+
     class Meta:
         model = StudentComplain
         fields = (
@@ -40,6 +67,12 @@ class StudentComplainSerializer(serializers.ModelSerializer):
             'upload_complaint',
             'upload_resolved',
             'comment',
+            'escalation_level',
+            'has_pending_reopen_request',
+            'latest_reopen_request_status',
+            'has_feedback',
+            'feedback_rating',
+            'feedback_comments',
         )
 
 
@@ -53,8 +86,13 @@ class ComplaintCreateSerializer(serializers.Serializer):
 
 
 class ComplaintProgressSerializer(serializers.Serializer):
-    status = serializers.ChoiceField(choices=[ComplaintStatus.IN_PROGRESS, ComplaintStatus.RESOLVED, ComplaintStatus.DECLINED])
+    status = serializers.IntegerField()
     note = serializers.CharField(required=False, allow_blank=True)
+
+    def validate_status(self, value):
+        if value not in [ComplaintStatus.IN_PROGRESS, ComplaintStatus.RESOLVED, ComplaintStatus.DECLINED]:
+            raise serializers.ValidationError("Invalid status.")
+        return value
 
     def validate(self, data):
         if data['status'] == ComplaintStatus.RESOLVED and not data.get('note'):
@@ -83,8 +121,46 @@ class ComplaintFeedbackSerializer(serializers.ModelSerializer):
 
 
 class ComplaintAdminAssignSerializer(serializers.Serializer):
+    complaint_id = serializers.IntegerField(required=True)
     caretaker_id = serializers.IntegerField(required=False)
     supervisor_id = serializers.IntegerField(required=False)
+
+    def validate(self, attrs):
+        if attrs.get('caretaker_id') is None and attrs.get('supervisor_id') is None:
+            raise serializers.ValidationError('At least one of caretaker_id or supervisor_id is required.')
+        return attrs
+
+
+class SupervisorReassignSerializer(serializers.Serializer):
+    caretaker_id = serializers.IntegerField(required=True)
+    note = serializers.CharField(required=False, allow_blank=True, default='')
+
+
+class ReopenRequestSerializer(serializers.ModelSerializer):
+    class Meta:
+        model = ReopenRequest
+        fields = ('id', 'complaint', 'requester', 'justification', 'status', 'reviewed_by', 'review_note', 'created_at', 'reviewed_at')
+        read_only_fields = ('id', 'complaint', 'requester', 'status', 'reviewed_by', 'review_note', 'created_at', 'reviewed_at')
+
+
+class ReopenRequestCreateSerializer(serializers.Serializer):
+    justification = serializers.CharField(required=True, min_length=10)
+
+
+class ReopenRequestReviewSerializer(serializers.Serializer):
+    approved = serializers.BooleanField(required=True)
+    review_note = serializers.CharField(required=False, allow_blank=True, default='')
+
+
+class ReportExportSerializer(serializers.Serializer):
+    FORMAT_CHOICES = [('csv', 'CSV'), ('pdf', 'PDF'), ('excel', 'Excel')]
+    format = serializers.ChoiceField(choices=FORMAT_CHOICES, default='csv')
+    location = serializers.CharField(required=False, allow_blank=True)
+    complaint_type = serializers.CharField(required=False, allow_blank=True)
+    priority = serializers.CharField(required=False, allow_blank=True)
+    status = serializers.IntegerField(required=False, allow_null=True)
+    start_date = serializers.DateField(required=False, allow_null=True)
+    end_date = serializers.DateField(required=False, allow_null=True)
 
 
 class ComplaintActivityLogSerializer(serializers.ModelSerializer):
